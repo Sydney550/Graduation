@@ -11,6 +11,6 @@ for f in filelist:
     key = f.split('.')[0]
     print(f'{key} shape:', data[key].shape)
     npylist.append(data[key])
-resized = np.stack([li for li in npylist], axis=1)
+resized = np.stack([li for li in npylist], axis=1).transpose(0, 2, 1)
 print(f'resized data shape: {resized.shape}')
 print(resized[3])
