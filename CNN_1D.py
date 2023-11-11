@@ -65,9 +65,9 @@ def load_files(path):
         key = f.split('.')[0]
         print(f'{key} shape:', data[key].shape)
         npylist.append(data[key])
-    resized = np.stack([li for li in npylist], axis=1)
+    resized = np.stack([li for li in npylist], axis=1).transpose(0, 2, 1)
     print(f'resized data shape: {resized.shape}')
-    return resized.T
+    return resized
 
 
 def data_proc(all_data, all_y):
