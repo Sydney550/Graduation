@@ -78,9 +78,9 @@ def data_proc(all_data, all_y):
     # X_train, X_val, Y_train, Y_val = train_test_split(X_train, Y_train, test_size=0.1, random_state=22)
 
     # 数据标准化,只使用训练集数据来拟合scaler，然后用这个scaler来转换训练集和测试集
-    # scaler = StandardScaler()
-    # X_train = scaler.fit_transform(X_train.reshape(-1, X_train.shape[-1])).reshape(X_train.shape)
-    # X_test = scaler.transform(X_test.reshape(-1, X_test.shape[-1])).reshape(X_test.shape)
+    scaler = StandardScaler()
+    X_train = scaler.fit_transform(X_train.reshape(-1, X_train.shape[-1])).reshape(X_train.shape)
+    X_test = scaler.transform(X_test.reshape(-1, X_test.shape[-1])).reshape(X_test.shape)
     return X_train, X_test, Y_train, Y_test, all_data
 
 
@@ -104,7 +104,7 @@ def cnn_vibra(in_shape, drop=0.5, lr=0.0001):
     model.add(Dense(100))
     model.add(Dense(50))
     model.add(Dense(1))
-
+    print(model.summary())
     optimizer = optimizers.Adam(learning_rate=lr)  # 创建一个优化器对象并设置学习率
     model.compile(optimizer=optimizer, loss='mse', metrics=[metrics.RootMeanSquaredError(), RSquare()])
     return model
@@ -113,8 +113,7 @@ def cnn_vibra(in_shape, drop=0.5, lr=0.0001):
 # def ticnn(in_shape, f1, f2, f3, f4, units):
 def ticnn(in_shape):
     model = Sequential()  # 使用序列函数，让数据按照序列排队输入到卷积层
-    model.add(Masking(mask_value=0., input_shape=in_shape))  # masking操作，可能不用
-    model.add(Conv1D(16, 64, strides=8, padding='same', activation='relu'))  # 第一个卷积层
+    model.add(Conv1D(16, 64, strides=8, padding='same', activation='relu', input_shape=in_shape))  # 第一个卷积层
     model.add(Dropout(0.5))  # 将经过第一个卷积层后的输出数据按照0.5的概率随机置零，也可以说是灭活
     model.add(BatchNormalization())
     # 添加批量标准层，将经过dropout的数据形成正态分布，有利于特征集中凸显，里面参数不需要了解和改动，直接黏贴或者删去均可。
@@ -139,7 +138,7 @@ def ticnn(in_shape):
     model.add(Flatten())  # 将经过卷积和池化的数据展平，具体操作方式可以理解为，有n个通道的卷积输出，将每个通道压缩成一个数据，这样展评后就会出现n个数据
     model.add(Dense(100))
     model.add(BatchNormalization())
-    model.add(Dense(6))  # 最后一层的参数设置要和标签种类一致
+    model.add(Dense(1))  # 最后一层的参数设置要和标签种类一致
     print(model.summary())  # 模型小结，在训练时可以看到网络的结构参数
     model.compile(loss='mse', optimizer='adam', metrics=[metrics.RootMeanSquaredError(), RSquare()])
 
@@ -148,38 +147,30 @@ def ticnn(in_shape):
 
 def ticnn2(in_shape):
     model = Sequential()  # 使用序列函数，让数据按照序列排队输入到卷积层
-    model.add(Masking(mask_value=0., input_shape=in_shape))  # masking操作，可能不用
-    model.add(Conv1D(16, 64, strides=8, padding='same', kernel_regularizer=l2(1e-4)))  # 第一个卷积层
-    model.add(Dropout(0.5))  # 将经过第一个卷积层后的输出数据按照0.5的概率随机置零，也可以说是灭活
-    model.add(BatchNormalization())
+    model.add(Conv1D(16, 64, strides=8, padding='same', kernel_regularizer=l2(1e-4), input_shape=in_shape))  # 第一个卷积层
+#     model.add(Dropout(0.5))  # 将经过第一个卷积层后的输出数据按照0.5的概率随机置零，也可以说是灭活
     model.add(Activation('relu'))
     # 添加批量标准层，将经过dropout的数据形成正态分布，有利于特征集中凸显，里面参数不需要了解和改动，直接黏贴或者删去均可。
     model.add(MaxPooling1D(2, strides=2))
     # 添加池化层，池化核大小为2步长为2，padding数据尾部补零。池化层不需要设置通道数，但卷积层需要。
     model.add(Conv1D(32, 3, padding='same', kernel_regularizer=l2(1e-4)))  # 第二个卷积层，第二个卷积层则不在需要设置输入数据情况。
-    model.add(BatchNormalization())
     model.add(Activation('relu'))
     model.add(MaxPooling1D(2, strides=2))
     model.add(Conv1D(64, 3, padding='same', kernel_regularizer=l2(1e-4)))  # 第三个卷积层
-    model.add(BatchNormalization())
     model.add(Activation('relu'))
     model.add(MaxPooling1D(2, strides=2))
     model.add(Conv1D(64, 3, padding='same', kernel_regularizer=l2(1e-4)))  # 第四个卷积层
-    model.add(BatchNormalization())
     model.add(Activation('relu'))
     model.add(MaxPooling1D(2, strides=2))
     model.add(Conv1D(64, 3, padding='same', kernel_regularizer=l2(1e-4)))  # 第五个卷积层
-    model.add(BatchNormalization())
     model.add(Activation('relu'))
     model.add(MaxPooling1D(2, strides=2))
     model.add(Conv1D(64, 3, kernel_regularizer=l2(1e-4)))  # 第六个卷积层
-    model.add(BatchNormalization())
     model.add(Activation('relu'))
     model.add(MaxPooling1D(2, strides=2))
     model.add(Flatten())  # 将经过卷积和池化的数据展平，具体操作方式可以理解为，有n个通道的卷积输出，将每个通道压缩成一个数据，这样展评后就会出现n个数据
     model.add(Dense(100, activation='relu', kernel_regularizer=l2(1e-4)))
-    model.add(BatchNormalization())
-    model.add(Dense(6))  # 最后一层的参数设置要和标签种类一致
+    model.add(Dense(1))  # 最后一层的参数设置要和标签种类一致
     print(model.summary())  # 模型小结，在训练时可以看到网络的结构参数
     optimizer = optimizers.Adam(learning_rate=0.001)  # 创建一个优化器对象并设置学习率
     model.compile(loss='mse', optimizer=optimizer, metrics=[metrics.RootMeanSquaredError(), RSquare()])
@@ -289,14 +280,14 @@ if __name__ == '__main__':
     gpus = tf.config.experimental.list_physical_devices('GPU')
     tf.config.experimental.set_memory_growth(gpus[0], True)
     print('GPU available:', tf.test.is_gpu_available())
-    vib_folder = 'vib_signals'
+    vib_folder = '/kaggle/input/data-for-graduation/vib_signals'
     drop = 0.5
     lr = 0.0105
-    epoch = 100
+    epoch = 50
     batch = 16
 
     # 读取S45C数据
-    df = pd.read_excel('s45c.xlsx').values
+    df = pd.read_excel('/kaggle/input/data-for-graduation/s45c.xlsx').values
     targets = df[:, -1]
     print(targets.shape)
 
@@ -307,6 +298,7 @@ if __name__ == '__main__':
     train_shape = x_train.shape[1:]
 
     nn_model = cnn_vibra(train_shape, lr)
+#     nn_model = ticnn2(train_shape)
     print(x_train.shape)
     # 训练模型
     nn_model = nn_train(nn_model, x_train, y_train, x_test, y_test, epoch, batch)

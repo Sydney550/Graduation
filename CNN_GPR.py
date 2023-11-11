@@ -77,8 +77,8 @@ class CNN_GPR():
         # filter2 = 32
         # filter3 = 64
         # dense_units = 100
-        vib_folder = 'vib_signals'
-        s45c_file = 's45c.xlsx'
+        vib_folder = '/kaggle/input/data-for-graduation/vib_signals'
+        s45c_file = '/kaggle/input/data-for-graduation/s45c.xlsx'
 
         df = pd.read_excel(s45c_file).values
         # 读取静态数据
