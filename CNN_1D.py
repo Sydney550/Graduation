@@ -253,7 +253,7 @@ def feature_train(load_data, targets, epoch, bs):
 
 def feature_predict(model, x_data):
     # 以最后一个全连接层的输出为提取的特征
-    feature_model = keras.Model(inputs=model.inputs, outputs=model.get_layer[-1].output)
+    feature_model = keras.Model(inputs=model.inputs, outputs=model.layers[-1].output)
     features = feature_model.predict(x_data)
     return features
 
