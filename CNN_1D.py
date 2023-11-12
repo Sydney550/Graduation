@@ -288,7 +288,7 @@ if __name__ == '__main__':
 
     # 读取S45C数据
     df = pd.read_excel('/kaggle/input/data-for-graduation/s45c.xlsx').values
-    targets = df[:, -1]
+    targets = df[:, [-1]]
     print(targets.shape)
 
     # 加载数据

@@ -85,7 +85,7 @@ class CNN_GPR():
         static = df[:, :-1]
         print(f'static data shape: {static.shape}')
         # 读取质检数据
-        quality = df[:, -1]
+        quality = df[:, [-1]]
         # 读取动态数据
         dynamic = cnn.load_files(vib_folder)
         print(f'Dynamic data shape: {dynamic.shape}')
@@ -94,7 +94,7 @@ class CNN_GPR():
                                                                                                                dynamic,
                                                                                                                quality,
                                                                                                                test_size=0.2,
-                                                                                                               random_state=22)
+                                                                                                               random_state=42)
 
         # train(filter1, filter2, filter3, dense_units, load_data)
         gpr_model, scaler = self.train(static_train, dynamic_train, quality_train)
