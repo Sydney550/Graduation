@@ -1,16 +1,17 @@
-# This is a sample Python script.
+import CNN_1D as cnn
+from PyEMD import CEEMDAN, Visualisation
 
-# Press Shift+F10 to execute it or replace it with your code.
-# Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
-
-
-def print_hi(name):
-    # Use a breakpoint in the code line below to debug your script.
-    print(f'Hi, {name}')  # Press Ctrl+F8 to toggle the breakpoint.
-
-
-# Press the green button in the gutter to run the script.
-if __name__ == '__main__':
-    print_hi('PyCharm')
-
-# See PyCharm help at https://www.jetbrains.com/help/pycharm/
+path = 'vib_signals'
+dynamic = cnn.load_files(path).transpose(0, 2, 1)
+datas = dynamic[0]
+fs = 10000
+ceemdan = CEEMDAN()
+ceemdan.noise_seed(22)
+for S in datas:
+    t = len(S)/fs
+    ceemdan.ceemdan(S)
+    imfs, res = ceemdan.get_imfs_and_residue()
+    vis = Visualisation()
+    vis.plot_imfs(imfs=imfs, residue=res, t=t, include_residue=True)
+    vis.plot_instant_freq(t, imfs=imfs)
+    vis.show()
