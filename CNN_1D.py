@@ -60,7 +60,7 @@ def load_files(path):
     print('------------loading data--------------')
     filelist = [f for f in os.listdir(path) if f.endswith('.mat')]
     npylist = []
-    for f in filelist:
+    for f in sorted(filelist):
         data = scio.loadmat(f'{path}/{f}')
         key = f.split('.')[0]
         print(f'{key} shape:', data[key].shape)
