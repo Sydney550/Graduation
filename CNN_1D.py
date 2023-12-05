@@ -18,10 +18,13 @@ from keras import optimizers
 from keras import Model
 from keras.regularizers import l2
 import scipy.io as scio
-
+from scipy import stats, signal
 from tensorflow_addons.metrics import RSquare
 import pandas as pd
-from fractions import Fraction
+from PyLMD import LMD
+import time
+import concurrent.futures
+from pathos.multiprocessing import ProcessPool
 
 '''用1D-CNN提取动态数据的特征'''
 
@@ -43,16 +46,120 @@ def plt_loss(history):
 # 绘制预测值与真实值的散点图
 def plt_true_pred(y_true, y_pred):
     # plt.figure(figsize=(8, 8))
-    plt.scatter(y_true, y_pred, alpha=0.7)
-    plt.plot([y_true.min(), y_true.max()], [y_true.min(), y_true.max()], 'r--')
-    plt.rcParams['axes.unicode_minus'] = False  # 用来正常显示负号
-    plt.legend(["Value predicted", "y = x"])
-    plt.xlabel('True Values')
-    plt.ylabel('Predicted Values')
+    # plt.scatter(y_true, y_pred, alpha=0.7)
+    # plt.plot([y_true.min(), y_true.max()], [y_true.min(), y_true.max()], 'r--')
+    # plt.rcParams['axes.unicode_minus'] = False  # 用来正常显示负号
+    # plt.legend(["Value predicted", "y = x"])
+    # plt.xlabel('True Values')
+    # plt.ylabel('Predicted Values')
+
+    plt.plot(y_true, 'r--', label='Real Ra')
+    plt.plot(y_pred, 'b--', label='Predicted Ra')
+    plt.xlabel('Sample Index')
+    plt.ylabel('Ra')
     plt.title('1D-CNN Regression Results')
+    plt.legend()
     # plt.savefig('predict.png')
     # print('Figure saved.')
     plt.show()
+
+
+# 转为包络信号
+def Envelop(x):
+    xh = signal.hilbert(x)  # 希尔伯特变换，得到解析信号
+    xe = np.abs(xh)  # 解析信号取模，得到包络信号
+    xe = xe - np.mean(xe)  # 去除直流分量
+    xh3 = np.fft.rfft(xe) / len(xe)  # 傅里叶变换，得到包络谱
+    mag = abs(xh3) * 2
+    return mag
+
+
+# 进行LMD分解，返回重构信号
+def get_lmd(signal):
+    # signal = Envelop(signal)
+    lmd = LMD()
+    PFs, res = lmd.lmd(signal)
+    # print(PFs.shape)
+    PFlist = []
+    corr_list = []
+    for pf in PFs:
+        # print(f'PF{i}')
+        corr, pvalue = stats.pearsonr(signal, pf)
+        # pvalue = round(pvalue, 5)
+        # kur = stats.kurtosis(pf)
+        # print(f'相关系数 {corr}  p值 {pvalue}  峭度 {kur}')
+        # if corr < 0.2:
+        # PFlist.append(pf)
+        corr_list.append(corr)
+    index = np.argsort(corr_list)  # 从小到大排序，返回索引值
+    # PFlist.append(PFs[index[-1]])
+    PFlist.append(PFs[index[-2]])
+    PFlist.append(PFs[index[-3]])
+    PFlist.append(PFs[index[-4]])
+    # PFlist.pop(index[-1])
+    # print(f'res')
+    # cor_res, p_res = stats.pearsonr(signal, res)
+    # kur_res = stats.kurtosis(res)
+    # print(f'相关系数 {cor_res}  p值 {p_res}  峭度 {kur_res}')
+    PFlist.append(res)
+    return np.sum(PFlist, axis=0)
+
+
+def lmd_sample(data):
+    start_time = time.time()
+    new_data = np.apply_along_axis(get_lmd, axis=0, arr=data)
+    end_time = time.time()
+    print('完成时间：', end_time, "处理时间：", end_time - start_time)
+    return new_data
+
+
+def lmd_proc(PFs, origin=None):
+    if origin is None:
+        pass
+        # PFs = np.delete(PFs, [3, 4, 5, 6, 7], axis=0)
+    else:
+        del_list = []
+        indicators = []
+        PFlist = []
+        for i, pf in enumerate(PFs[:-1]):
+            corr, _ = stats.pearsonr(origin, pf)  # 相关系数
+            # kur = stats.kurtosis(pf)  # 峭度
+            # 指标：相关系数0.5以上，p值0.05以下，峭度0.3以下
+            # if corr > 0.3:
+            #     del_list.append(i)
+            indicators.append(corr)
+        index = np.argsort(indicators)  # 从小到大排序返回索引
+        # PFlist.append(PFs[index[-2]])
+        # PFlist.append(PFs[index[-3]])
+        # PFlist.append(PFs[index[-4]])
+        # PFlist.append(PFs[-1])
+        del_list = index[:-3]
+        PFs = np.delete(PFs, del_list, axis=0)
+
+    return np.sum(PFs, axis=0)
+
+
+def load_lmd(data, origin=None):
+    """
+    加载LMD后的信号
+    :param data: shape为(n,m,k)的LMD信号数组，其中n为原信号维度，m为一个信号的PFs个数，k为一个PFs的长度
+    :param origin: shape为(n,k)的原始信号数组，其中n为信号维度，k为一个信号的长度
+    :return: 合并PFs后得到的shape为(n,k)的数组，其中n为信号维度，k为一个信号的长度。若将信号转为了包络谱，则信号长度减半。
+    """
+    if origin is None:
+        print('--------Original signals is None.--------')
+        new_data = np.apply_along_axis(lmd_proc, axis=1, arr=data)
+    else:
+        start_time = time.time()
+        new_data_list = []
+        for i in range(data.shape[0]):
+            new_data_list.append(lmd_proc(data[i], origin[i]))
+        new_data = np.array(new_data_list)
+        new_data = np.apply_along_axis(Envelop, axis=1, arr=new_data)  # 对合并PFs后的LMD信号做包络分析
+        end_time = time.time()
+        print('完成时间：', end_time, "处理时间：", end_time - start_time)
+
+    return new_data
 
 
 # 加载所有的 npy 文件
@@ -86,7 +193,8 @@ def data_proc(all_data, all_y):
 
 # 构建 1D-CNN 模型
 # 振动模型
-def cnn_vibra(in_shape, drop=0.5, lr=0.0001):
+def cnn_vibra(in_shape, lr=0.0001):
+    print(f'input shape:{in_shape}, learning rate:{lr}')
     model = Sequential()
     model.add(Conv1D(16, 64, activation='relu', input_shape=in_shape))
     model.add(MaxPooling1D(16, strides=16))
@@ -148,7 +256,7 @@ def ticnn(in_shape):
 def ticnn2(in_shape):
     model = Sequential()  # 使用序列函数，让数据按照序列排队输入到卷积层
     model.add(Conv1D(16, 64, strides=8, padding='same', kernel_regularizer=l2(1e-4), input_shape=in_shape))  # 第一个卷积层
-#     model.add(Dropout(0.5))  # 将经过第一个卷积层后的输出数据按照0.5的概率随机置零，也可以说是灭活
+    #     model.add(Dropout(0.5))  # 将经过第一个卷积层后的输出数据按照0.5的概率随机置零，也可以说是灭活
     model.add(Activation('relu'))
     # 添加批量标准层，将经过dropout的数据形成正态分布，有利于特征集中凸显，里面参数不需要了解和改动，直接黏贴或者删去均可。
     model.add(MaxPooling1D(2, strides=2))
@@ -188,14 +296,33 @@ def nn_train(model, X_train, Y_train, X_val, Y_val, epoch=100, bs=8):
     validation_data: 验证集
     '''
     # tensorboard
-    # tb_callback = tf.keras.callbacks.TensorBoard(log_dir="../tf-logs")
-    history = model.fit(X_train, Y_train, epochs=epoch, batch_size=bs, validation_data=(X_val, Y_val), verbose=1)
+    tb_callback = tf.keras.callbacks.TensorBoard(log_dir="../tf-logs")
+    history = model.fit(X_train, Y_train, epochs=epoch, batch_size=bs, validation_data=(X_val, Y_val), verbose=1,
+                        callbacks=[tb_callback])
     # plt_loss(history)
     # 评估模型
     score = model.evaluate(X_val, Y_val, verbose=1)  # 准确率
     print(f'\n Training {model.metrics_names[0]}: {score[0]}, {model.metrics_names[1]}: {score[1]}')
 
     return model
+
+
+# 预测测试集
+def nn_test(model, X_test, Y_test, epoch=100, batch=8):
+    print('-------------Testing-----------------')
+    Y_pred = model.predict(X_test)
+    print('\n', Y_test, '\n', Y_pred)
+
+    plt_true_pred(Y_test, Y_pred)
+
+    # 计算均方误差MSE和决定系数R2
+    mse = mean_squared_error(Y_test, Y_pred)
+    rmse = np.sqrt(mse)
+    r2 = r2_score(Y_test, Y_pred)
+    print('Test MSE:', mse, '\t, RMSE:', rmse, '\t, R2:', r2)
+    with open("test.txt", "w") as f:
+        f.write(f'Test MSE: {mse},\tRMSE: {rmse},\tR2: {r2}')
+    return
 
 
 # 交叉验证
@@ -235,14 +362,14 @@ def cross_val(X_train, Y_train, epoch=100, bs=8):
 
 
 # 提取特征
-def feature_train(load_data, targets, epoch, bs):
+def feature_train(load_data, targets, epoch, bs, lr):
     # 加载信号数据
     # load_data = load_files(x_folder, cut_time)
     # 划分训练集和测试集
     x_train, x_test, y_train, y_test, all_data = data_proc(load_data, targets)
     in_shape = x_train.shape[1:]
     # 建立模型
-    model = cnn_vibra(in_shape, lr=0.0105)
+    model = cnn_vibra(in_shape, lr=lr)
     # 训练模型
     nn_model = nn_train(model, x_train, y_train, x_test, y_test, epoch, bs)
     nn_model.save('cnn1d.h5')
@@ -258,50 +385,46 @@ def feature_predict(model, x_data):
     return features
 
 
-# 预测测试集
-def nn_test(model, X_test, Y_test, epoch=100, batch=8):
-    print('-------------Testing-----------------')
-    Y_pred = model.predict(X_test)
-    print('\n', Y_test, '\n', Y_pred)
-
-    plt_true_pred(Y_test, Y_pred)
-
-    # 计算均方误差MSE和决定系数R2
-    mse = mean_squared_error(Y_test, Y_pred)
-    rmse = np.sqrt(mse)
-    r2 = r2_score(Y_test, Y_pred)
-    print('Test MSE:', mse, '\t, RMSE:', rmse, '\t, R2:', r2)
-    return
-
-
-
 if __name__ == '__main__':
     # 显存按需分配
     gpus = tf.config.experimental.list_physical_devices('GPU')
     tf.config.experimental.set_memory_growth(gpus[0], True)
     print('GPU available:', tf.test.is_gpu_available())
-    vib_folder = '/kaggle/input/data-for-graduation/vib_signals'
+    vib_folder = '../autodl-tmp/vib_signals'
     drop = 0.5
-    lr = 0.0105
-    epoch = 50
-    batch = 16
+    lr = 0.0001
+    epoch = 60
+    batch = 32
 
     # 读取S45C数据
-    df = pd.read_excel('/kaggle/input/data-for-graduation/s45c.xlsx').values
+    df = pd.read_excel('s45c.xlsx').values
     targets = df[:, [-1]]
-    print(targets.shape)
+    print('targets shape:', targets.shape)
 
     # 加载数据
-    data = load_files(vib_folder)
+    '''
+    # data = load_files(vib_folder)
+    original = np.load('../autodl-tmp/signals_origin.npy')
+    print('original shape:', original.shape)
+    data = np.load('../autodl-tmp/lmd_origin.npy')
+    print('data shape:', data.shape)
+    # with concurrent.futures.ProcessPoolExecutor() as executor:
+    #     new_data_list = list(executor.map(lmd_sample, data))
+    with ProcessPool(1) as pool:
+        new_data_list = pool.map(load_lmd, data, original)
+    new_data = np.array(new_data_list).transpose(0, 2, 1)
+    print(f'data shape after lmd: {new_data.shape}')
+    '''
+    new_data = np.load('../autodl-tmp/data_lmd.npy')
     # 处理数据
-    x_train, x_test, y_train, y_test, all_data = data_proc(data, targets)
+    x_train, x_test, y_train, y_test, all_data = data_proc(new_data, targets)
     train_shape = x_train.shape[1:]
 
-    nn_model = cnn_vibra(train_shape, lr)
-#     nn_model = ticnn2(train_shape)
-    print(x_train.shape)
+    model = cnn_vibra(train_shape, lr=lr)
+    #     nn_model = ticnn2(train_shape)
+    print('train shape:', x_train.shape)
     # 训练模型
-    nn_model = nn_train(nn_model, x_train, y_train, x_test, y_test, epoch, batch)
+    nn_model = nn_train(model, x_train, y_train, x_test, y_test, epoch, batch)
 
     # 测试
     nn_test(nn_model, x_test, y_test)
